@@ -23,6 +23,7 @@ export class AsyncBufferObservationStrategy extends ObservationStrategy {
   private readonly startedAt: string;
   private readonly cycleId: string;
   private priorExtractedValues?: Record<string, unknown>;
+  private targetRecordId?: string;
 
   constructor(deps: StrategyDeps, opts: ObservationRunOpts) {
     super(deps, opts);
@@ -160,12 +161,17 @@ export class AsyncBufferObservationStrategy extends ObservationStrategy {
       omDebug(`[OM:asyncBuffer] skipping persist for thread ${threadId}: observational memory record is gone`);
       return;
     }
+    // Write to the current generation, not the one this cycle started on. A reflection
+    // can retire that generation while the Observer runs; a chunk appended to the retired
+    // row would never be activated. Reflection copies the cursor forward, so the chunk's
+    // messages are still unobserved on the current generation.
+    this.targetRecordId = liveRecord.id;
 
     const messageTokens = await this.tokenCounter.countMessagesAsync(messages);
     await withRetry(
       () =>
         this.storage.updateBufferedObservations({
-          id: record.id,
+          id: liveRecord.id,
           chunk: {
             cycleId: this.cycleId,
             observations: processed.observations,
@@ -194,7 +200,7 @@ export class AsyncBufferObservationStrategy extends ObservationStrategy {
       threadId,
       resourceId,
       processed.lastObservedAt,
-      record.id,
+      liveRecord.id,
     );
 
     // Persist extracted values immediately; buffered observation activation is unrelated to extractor state.
@@ -257,7 +263,7 @@ export class AsyncBufferObservationStrategy extends ObservationStrategy {
       startedAt: this.startedAt,
       tokensBuffered,
       bufferedTokens: totalBufferedTokens,
-      recordId: record.id,
+      recordId: this.targetRecordId ?? record.id,
       threadId,
       observations: processed.observations,
       extractedValues: processed.extractedValues,
