@@ -14,6 +14,20 @@ function createAttempt(runSignal?: AbortSignal) {
 }
 
 describe('private model attempt cancellation', () => {
+  it('allocates a stable transport ID only when it is requested', () => {
+    const randomUUID = vi.spyOn(crypto, 'randomUUID').mockClear();
+    const first = new ModelAttempt();
+    const second = new ModelAttempt();
+    expect(randomUUID).not.toHaveBeenCalled();
+    const firstId = first.id;
+    expect(first.id).toBe(firstId);
+    expect(randomUUID).toHaveBeenCalledTimes(1);
+    expect(second.id).not.toBe(firstId);
+    expect(randomUUID).toHaveBeenCalledTimes(2);
+    first.dispose();
+    second.dispose();
+  });
+
   it('subscribes before arming without wasting an attempt on already queued input', () => {
     const { attempt, notify, unsubscribe } = createAttempt();
     notify();
